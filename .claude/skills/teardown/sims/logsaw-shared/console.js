@@ -277,7 +277,7 @@ export function createConsole(app) {
     bladeSvg.innerHTML = `<circle cx="40" cy="40" r="${rr}" fill="#e6eaee" stroke="${C.mute}"/><circle cx="40" cy="40" r="${rm}" fill="none" stroke="${C.or}" stroke-dasharray="2 2"/><circle cx="40" cy="40" r="6" fill="#2f353c"/><line x1="${40 + Math.cos(a) * 10}" y1="${40 + Math.sin(a) * 10}" x2="${40 + Math.cos(a) * rr}" y2="${40 + Math.sin(a) * rr}" stroke="#5c656e" stroke-width="2"/>${m.grinding ? `<circle cx="40" cy="${40 - rr}" r="5" fill="${C.or}"/>` : ''}`;
     [
       ['ÇAP', `${fmt(m.bladeR * 2000, 1)} mm`],
-      ['BIÇAK DEVRİ', `${fmt(m.bladeRpm)} /dk · ${fmt(m.bladeV, 0)} m/s`],
+      ['DEVİR', `${fmt(m.bladeRpm)} /dk`],
       ['BİLEMEYE', m.grinding ? 'BİLENİYOR' : `${m.nextGrind} kesim`],
     ].forEach(([k, v], i) => {
       bl[i].k.textContent = k;
