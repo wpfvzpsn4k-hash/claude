@@ -3,7 +3,7 @@
 // turunu imleçle oynar; herhangi bir tık, sürükleme, tekerlek ya da tuş kontrolü ziyaretçiye verir, 25 sn sessizlik geri alır.
 import {createConsole, STATIONS} from './console.js';
 import {KEYS} from './machine.js';
-import {BLADE_R0, BLADE_RPM, FEED, GRIND_EVERY, GRIND_WEAR, machineAt} from './kin.js';
+import {BLADE_R0, bladeRpm, FEED, GRIND_EVERY, GRIND_WEAR, machineAt} from './kin.js';
 import {createStage, BG} from './stage.js';
 
 const W = 1600;
@@ -349,7 +349,7 @@ export function runLive() {
     // kafa yörüngesi ve bıçak
     const rate = paused ? 0 : dt * (slow ? SLOW : 1);
     theta += rate * (cpm / 60) * 2 * Math.PI;
-    bladeAngle += rate * (BLADE_RPM / 60) * 2 * Math.PI;
+    bladeAngle += rate * (bladeRpm(cpm) / 60) * 2 * Math.PI;
     bladeAngle %= 2 * Math.PI;
     const kNow = Math.floor(theta / (2 * Math.PI));
     const bladeR = BLADE_R0 - GRIND_WEAR * Math.floor(kNow / GRIND_EVERY);

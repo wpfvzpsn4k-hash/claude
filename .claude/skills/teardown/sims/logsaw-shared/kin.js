@@ -15,7 +15,11 @@ export const ORBIT_E = 0.2; // eksantrik 200 mm
 export const BLADE_R0 = 0.31; // yeni bıçak Ø 620 mm
 export const BLADE_RMIN = 0.28; // Ø 560 altında log tam kesilemez: D + r ≤ e + R
 export const BLADE_T = 0.004;
-export const BLADE_RPM = 1500;
+// bıçak devri kesim hızıyla doğrusal artar: 80 kesim/dk'da 1500, her +1 kesim/dk için +7,5 dev/dk
+// (40 → 1200, 200 → 2400 dev/dk). Böylece bıçağın logda geçirdiği kısa sürede kenar hızı düşmez.
+export const BLADE_RPM_REF = [80, 1500];
+export const BLADE_RPM_SLOPE = 7.5;
+export const bladeRpm = (cpm) => BLADE_RPM_REF[1] + BLADE_RPM_SLOPE * (cpm - BLADE_RPM_REF[0]);
 export const GRIND_EVERY = 40; // her 40 kesimde bir bileme
 export const GRIND_WEAR = 0.00002; // bileme başına yarıçaptan 0,02 mm
 export const SHEET = 0.25; // yaprak boyu (delik aralığı) 250 mm
@@ -137,7 +141,10 @@ export function machineAt(theta, {cpm, Lr, bladeR, grindPhase = 0}) {
     feedTime,
     feedSpeed: step / Math.max(1e-6, feedTime), // m/s besleme tepe ortalaması
     bladeR,
-    bladeV: (2 * Math.PI * bladeR * BLADE_RPM) / 60,
+    bladeRpm: bladeRpm(cpm),
+    bladeV: (2 * Math.PI * bladeR * bladeRpm(cpm)) / 60,
+    // bıçak kenarının bir kesim boyunca logda kat ettiği yol
+    edgePerCut: ((2 * Math.PI * bladeR * bladeRpm(cpm)) / 60) * (((2 * RELEASE) / (2 * Math.PI)) * (60 / cpm)),
     depth: cutDepth(psi, bladeR),
     cutsDone,
     logs,

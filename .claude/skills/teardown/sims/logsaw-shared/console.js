@@ -1,6 +1,6 @@
 // Logsaw konsolu, 1600 × 900: başlık, üretim, bıçak, istasyon kartı, canlı kesim planı, istasyon düğmeleri,
 // kontroller, kesim hızı ve rulo boyu sürgüleri, çağrı etiketleri.
-import {BLADE_R0, BLADE_RMIN, BLADE_RPM, GRIND_EVERY, GRIND_WEAR, LOG_D, LOG_L, ORBIT_E, SHEET} from './kin.js';
+import {BLADE_R0, BLADE_RMIN, GRIND_EVERY, GRIND_WEAR, LOG_D, LOG_L, ORBIT_E, SHEET} from './kin.js';
 import {ACCENT} from './machine.js';
 
 export const C = {ink: '#1f262d', mute: '#7d8893', faint: '#c9d0d6', line: '#d9dfe4', panel: 'rgba(250,251,252,.94)', or: ACCENT};
@@ -54,12 +54,12 @@ const CARD = {
   },
   head: {
     t: 'Orbital kafa',
-    d: 'Bıçak kendi milinde döner, kol onu 200 mm eksantrikle yörüngede gezdirir. Her turda bıçak bir kez logun içinden geçer; turun geri kalanı beslemeye kalır.',
+    d: 'Bıçak kendi milinde döner, kol onu 200 mm eksantrikle yörüngede gezdirir. Kesim hızı arttıkça bıçak devri de artar (+7,5 dev/dk her kesim/dk için).',
     rows: (m) => [
       ['KAFA DEVRİ', `${fmt(m.cpm)} dev/dk`],
-      ['BIÇAK DEVRİ', `${fmt(BLADE_RPM)} dev/dk`],
+      ['BIÇAK DEVRİ', `${fmt(m.bladeRpm)} dev/dk`],
       ['ÇEVRE HIZI', `${fmt(m.bladeV, 1)} m/s`],
-      ['EKSANTRİK', mm(ORBIT_E)],
+      ['KESİMDE KENAR YOLU', `${fmt(m.edgePerCut, 1)} m`],
     ],
     a: ['blade', 'arm'],
   },
@@ -102,7 +102,7 @@ const LABEL = {
   lane: ['V-KANAL', 'log yatağı'],
   belts: ['TAHRİK BANTLARI', 'adım besleme'],
   clamp: ['BASKI PAPUCU', 'pnömatik'],
-  blade: ['DAİRESEL BIÇAK', `Ø ${fmt(BLADE_R0 * 2000)} · ${fmt(BLADE_RPM)} dev/dk`],
+  blade: ['DAİRESEL BIÇAK', `Ø ${fmt(BLADE_R0 * 2000)} · devir kesim hızına bağlı`],
   arm: ['YÖRÜNGE KOLU', 'e = 200 mm'],
   grind: ['BİLEME TAŞLARI', 'iki yüz'],
   flap: ['FİRE KAPAĞI', 'kesimden sonra açılır'],
@@ -277,7 +277,7 @@ export function createConsole(app) {
     bladeSvg.innerHTML = `<circle cx="40" cy="40" r="${rr}" fill="#e6eaee" stroke="${C.mute}"/><circle cx="40" cy="40" r="${rm}" fill="none" stroke="${C.or}" stroke-dasharray="2 2"/><circle cx="40" cy="40" r="6" fill="#2f353c"/><line x1="${40 + Math.cos(a) * 10}" y1="${40 + Math.sin(a) * 10}" x2="${40 + Math.cos(a) * rr}" y2="${40 + Math.sin(a) * rr}" stroke="#5c656e" stroke-width="2"/>${m.grinding ? `<circle cx="40" cy="${40 - rr}" r="5" fill="${C.or}"/>` : ''}`;
     [
       ['ÇAP', `${fmt(m.bladeR * 2000, 1)} mm`],
-      ['ÇEVRE HIZI', `${fmt(m.bladeV, 1)} m/s`],
+      ['BIÇAK DEVRİ', `${fmt(m.bladeRpm)} /dk · ${fmt(m.bladeV, 0)} m/s`],
       ['BİLEMEYE', m.grinding ? 'BİLENİYOR' : `${m.nextGrind} kesim`],
     ].forEach(([k, v], i) => {
       bl[i].k.textContent = k;
