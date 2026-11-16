@@ -4,6 +4,7 @@
 import {createConsole, STATIONS} from './console.js';
 import {KEYS} from './machine.js';
 import {BLADE_R0, bladeRpm, FEED, GRIND_EVERY, GRIND_WEAR, machineAt} from './kin.js';
+import * as THREE from 'three';
 import {createStage, BG} from './stage.js';
 
 const W = 1600;
@@ -43,9 +44,13 @@ export const SCRIPT = [
   [45, 'station', 'outfeed'],
   [48, 'lr', 0.28, 1.4],
   [55, 'lr', 0.23, 1.2],
+  [24.5, 'section', true],
+  [28.4, 'section', false],
   [58.5, 'slow', false],
   [62, 'station', 'overview'],
-  [68, 'slow', true],
+  [63.2, 'explode', true],
+  [68.6, 'explode', false],
+  [69.6, 'slow', true],
 ];
 export const DURATION = 72;
 
@@ -122,6 +127,22 @@ export function runLive() {
   let xrayOn = false;
   let labelsOn = true;
   let labelsT = 0;
+  let sectionOn = false;
+  let section = 0;
+  let explodeOn = false;
+  let explode = 0;
+  let pausedBefore = false;
+  let focus = null; // {key, c: [x, y, z], d}
+  let focusKey = null;
+  let focusK = 0;
+  const setExplode = (on) => {
+    if (on === explodeOn) return;
+    explodeOn = on;
+    if (on) {
+      pausedBefore = paused;
+      paused = true;
+    } else paused = pausedBefore;
+  };
   let viewT = 0;
   const hi = Object.fromEntries(KEYS.map((k) => [k, 0]));
   const off = {az: 0, el: 0, k: 1};
@@ -132,6 +153,7 @@ export function runLive() {
     station = s;
     viewT = T;
     xrayOn = !!XRAY[s];
+    focus = null;
     Object.assign(off, {az: 0, el: 0, k: 1});
     // bileme istasyonu açılınca sıradaki turda bileme yap (her 40 kesimin sayacı buradan başlar)
     if (s === 'grind') grindPhase = Math.floor(theta / (2 * Math.PI)) + (theta / (2 * Math.PI) % 1 < 0.3 ? 0 : 1);
@@ -143,7 +165,7 @@ export function runLive() {
   const lrX = (v) => ui.LR.x + ((v - LRS[0]) / (LRS[1] - LRS[0])) * ui.LR.w;
   const spotOf = (ev) => {
     if (ev[1] === 'station') return ui.spots[ev[2]];
-    if (ev[1] === 'slow') return ui.spots.slow;
+    if (ui.spots[ev[1]]) return ui.spots[ev[1]];
     return [lrX(ev[2]), ui.LR.y + 2];
   };
   // imleç: her olaydan 1 sn önce hedefe süzülür, olayda basar; register olayında düğmeyi sürükler
@@ -184,6 +206,9 @@ export function runLive() {
     Lr = 0.23;
     cpm = 80;
     labelsOn = true;
+    sectionOn = false;
+    explodeOn = false;
+    focus = null;
   };
   const takeOver = () => {
     lastInput = T;
@@ -210,6 +235,14 @@ export function runLive() {
     play: () => (paused = !paused),
     slow: () => (slow = !slow),
     xray: () => (xrayOn = !xrayOn),
+    section: () => {
+      sectionOn = !sectionOn;
+      if (sectionOn) xrayOn = true;
+    },
+    explode: () => {
+      setExplode(!explodeOn);
+      if (explodeOn) xrayOn = true;
+    },
     labels: () => {
       labelsOn = !labelsOn;
       labelsT = T;
@@ -252,6 +285,9 @@ export function runLive() {
     else if (key === 's') ui.ctl.slow.click();
     else if (key === 'g') ui.ctl.xray.click();
     else if (key === 'e') ui.ctl.labels.click();
+    else if (key === 'k') ui.ctl.section.click();
+    else if (key === 'x') ui.ctl.explode.click();
+    else if (key === 'escape') focus = null;
     else if (key === 'arrowleft') Lr = Math.max(LRS[0], Lr - 0.005);
     else if (key === 'arrowright') Lr = Math.min(LRS[1], Lr + 0.005);
     else return;
@@ -259,7 +295,31 @@ export function runLive() {
     e.preventDefault();
   });
   let drag = null;
+  // parçaya tıklama: sürüklemeden bırakılan tıkta ışın at, ilk görünür parçayı odakla
+  const ray = new THREE.Raycaster();
+  let down0 = null;
+  const pick = (e) => {
+    const r = canvas.getBoundingClientRect();
+    const ndc = new THREE.Vector2(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, st.camera);
+    const vis = st.mc.pickables.filter((o) => {
+      for (let p = o; p; p = p.parent) if (!p.visible) return false;
+      return true;
+    });
+    const hit = ray.intersectObjects(vis, false).find((h) => [].concat(h.object.material).some((m) => m.opacity > 0.35));
+    if (!hit) {
+      focus = null;
+      return;
+    }
+    const key = hit.object.userData.part;
+    const b = key === 'roll' ? new THREE.Box3().setFromObject(hit.object) : st.mc.partBox(key);
+    const c = b.getCenter(new THREE.Vector3());
+    const size = b.getSize(new THREE.Vector3()).length();
+    focus = {key, c: [c.x, c.y, c.z], d: Math.min(4.5, Math.max(0.7, size * 2.4))};
+    focusKey = key;
+  };
   canvas.addEventListener('pointerdown', (e) => {
+    down0 = {x: e.clientX, y: e.clientY};
     drag = {x: e.clientX, y: e.clientY};
     canvas.setPointerCapture(e.pointerId);
     canvas.classList.add('drag');
@@ -275,7 +335,11 @@ export function runLive() {
     drag = null;
     canvas.classList.remove('drag');
   };
-  canvas.addEventListener('pointerup', endDrag);
+  canvas.addEventListener('pointerup', (e) => {
+    if (down0 && Math.hypot(e.clientX - down0.x, e.clientY - down0.y) < 6) pick(e);
+    down0 = null;
+    endDrag();
+  });
   canvas.addEventListener('pointercancel', endDrag);
   canvas.addEventListener(
     'wheel',
@@ -321,6 +385,8 @@ export function runLive() {
         // yeni tur
         slow = true;
         Lr = 0.23;
+        sectionOn = false;
+        setExplode(false);
       }
       for (const ev of SCRIPT) {
         if (!(ev[0] > AP.last && ev[0] <= c) && !(AP.last < 0 && ev[0] === 0)) continue;
@@ -330,6 +396,13 @@ export function runLive() {
         } else if (ev[1] === 'slow') {
           slow = ev[2];
           pulse('slow');
+        } else if (ev[1] === 'section') {
+          sectionOn = ev[2];
+          pulse('section');
+        } else if (ev[1] === 'explode') {
+          setExplode(ev[2]);
+          if (ev[2]) xrayOn = true;
+          pulse('explode');
         } else if (ev[1] === 'lr') Object.assign(lrAnim, {from: Lr, to: ev[2], t0: T, dur: ev[3]});
       }
       if (T - lrAnim.t0 < lrAnim.dur + 0.1) Lr = Math.round((lrAnim.from + (lrAnim.to - lrAnim.from) * sm((T - lrAnim.t0) / lrAnim.dur)) * 200) / 200;
@@ -362,21 +435,40 @@ export function runLive() {
     const ke = 1 - Math.exp(-dt / 0.25);
     for (const k of KEYS) hi[k] += ((HI[station] === k ? 0.5 + 0.5 * Math.sin(T * 3.2) * 0.4 + 0.3 : 0) - hi[k]) * ke;
     xray += ((xrayOn ? 1 : 0) - xray) * ke;
+    const ke2 = 1 - Math.exp(-dt / 0.35);
+    section += ((sectionOn ? 1 : 0) - section) * ke2;
+    explode += ((explodeOn ? 1 : 0) - explode) * ke2;
+    focusK += ((focus ? 1 : 0) - focusK) * ke2;
+    if (!focus && focusK < 0.01) focusKey = null;
     const tgt = {...VIEW[station]};
     const since = T - viewT;
     tgt.az += off.az + (station === 'overview' ? 6 * Math.sin(since * 0.12) : 2.5 * Math.sin(since * 0.3));
     tgt.el = clamp(tgt.el + off.el, -25, 85);
     tgt.d *= off.k;
+    if (focus) {
+      [tgt.tx, tgt.ty, tgt.tz] = focus.c;
+      tgt.d = focus.d * off.k;
+    } else if (section > 0.01 || explode > 0.01) {
+      // kesit / patlatma: dişli kutusuna akış tarafından, operatör yanından bak
+      const v = {tx: 0.36, ty: 1.48, tz: 0, az: 38, el: 14, d: 2.5};
+      const k2 = Math.max(section, explode);
+      for (const key of ['tx', 'ty', 'tz', 'el']) tgt[key] += (v[key] - tgt[key]) * k2;
+      tgt.d += (v.d * off.k - tgt.d) * k2;
+      tgt.az += (((((v.az + off.az - tgt.az) % 360) + 540) % 360) - 180) * k2;
+    }
     const k = 1 - Math.exp(-dt / (AP.on ? 0.35 : 0.4));
     cam.az += wrap(tgt.az - cam.az) * k;
     for (const key of ['tx', 'ty', 'tz', 'el', 'd']) cam[key] += (tgt[key] - cam[key]) * k;
-    st.frame({...m, Lr, bladeAngle, T, hi, xray}, {...cam, az: cam.az * D2R, el: cam.el * D2R, sx: 0, sy: -24});
+    st.frame({...m, Lr, bladeAngle, T, hi, xray, section, explode, focusKey, focusK}, {...cam, az: cam.az * D2R, el: cam.el * D2R, sx: 0, sy: -24});
 
     const lab = (labelsOn ? sm((T - labelsT) / 0.4) : 1 - sm((T - labelsT) / 0.3)) * sm((since - 0.9) / 0.6);
     ui.update({
       mech: mDisp,
       station,
       clampOpen,
+      part: focus?.key ?? null,
+      sectionOn,
+      explodeOn,
       bladeAngle,
       lrK: (Lr - LRS[0]) / (LRS[1] - LRS[0]),
       speedK: (cpm - SPEED[0]) / (SPEED[1] - SPEED[0]),
@@ -411,6 +503,14 @@ export function runLive() {
     },
     set: (o) => {
       if ('theta' in o) theta = o.theta;
+      if ('section' in o) sectionOn = o.section;
+      if ('explode' in o) setExplode(o.explode);
+      if ('focus' in o) {
+        const b = st.mc.partBox(o.focus);
+        const c = b.getCenter(new THREE.Vector3());
+        focus = {key: o.focus, c: [c.x, c.y, c.z], d: Math.min(4.5, Math.max(0.7, b.getSize(new THREE.Vector3()).length() * 2.4))};
+        focusKey = o.focus;
+      }
       if ('Lr' in o) Lr = o.Lr;
       if ('slow' in o) slow = o.slow;
       if ('paused' in o) paused = o.paused;

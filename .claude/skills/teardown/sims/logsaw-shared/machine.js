@@ -91,8 +91,11 @@ export function buildMachine() {
     if (key) parts[key].push(m);
     return m;
   };
+  // her mesh hangi parçaya ait: tıklama ve odak soluklaştırma bununla çalışır
+  let tag = null;
   const add = (geo, mat, x = 0, y = 0, z = 0, parent = root) => {
     const m = new THREE.Mesh(geo, mat);
+    m.userData.part = tag;
     m.position.set(x, y, z);
     m.castShadow = true;
     m.receiveShadow = true;
@@ -105,6 +108,7 @@ export function buildMachine() {
   const rubber = (k) => M(k, {color: '#24272b', metalness: 0, roughness: 0.85});
 
   // ---------------------------------------------------------- 1. besleme şeridi
+  tag = 'lane';
   const X0 = LANE_START - 0.2;
   const X1 = -0.025; // bıçak yarığından önce biter
   const laneLen = X1 - X0;
@@ -138,8 +142,10 @@ export function buildMachine() {
     return t;
   })();
   const beltMat = M('infeed', {map: beltTex, roughness: 0.8, metalness: 0});
+  tag = 'feedBelt';
   for (const s of [-1, 1]) vPlace(add(box(laneLen, 0.006, 0.04), beltMat, (X0 + X1) / 2, 0, 0), s, 0.003, 0);
   // şerit ayakları ve tahrik motoru
+  tag = 'lane';
   for (let x = X0 + 0.3; x < X1; x += 1.2) {
     for (const z of [-0.22, 0.22]) add(box(0.06, TABLE_Y - 0.06, 0.06), dark('infeed'), x, (TABLE_Y - 0.06) / 2, z);
     add(box(0.06, 0.06, 0.5), dark('infeed'), x, TABLE_Y - 0.09, 0);
@@ -151,6 +157,7 @@ export function buildMachine() {
   // ---------------------------------------------------------- 2. baskı papuçları (bıçağın iki yanında)
   // tek papuç bıçağın besleme tarafında: akış tarafı kafa koluyla çakışırdı, rulo çıkış bandının kılavuzunda tutulur
   const clamps = [];
+  tag = 'clamp';
   {
     const x = -0.1;
     const g = new THREE.Group();
@@ -169,24 +176,185 @@ export function buildMachine() {
 
   // ---------------------------------------------------------- 3. orbital kafa
   // portal: iki kolon + kiriş, kafa dişli kutusu kirişe asılı (akış yönünde, x > 0)
-  for (const z of [-0.62, 0.62]) add(box(0.14, 1.95, 0.14), paint('head'), 0.36, 0.975, z);
+  tag = 'portal';
+  for (const z of [-0.62, 0.62]) add(box(0.14, 1.95, 0.14), paint('head'), 0.36, 0.975, z).userData.secFade = z > 0 ? 0.8 : 0;
   add(box(0.18, 0.16, 1.38), paint('head'), 0.36, 1.95 + 0.08, 0);
-  const housing = add(box(0.42, 0.42, 0.34), M('head', {color: '#4d5c6c', metalness: 0.25}), 0.33, H.y + 0.1, 0);
-  void housing;
-  add(xCyl(0.07, 0.1), steel('head'), 0.1, H.y, 0);
-  add(box(0.36, 0.22, 0.26), M('head', {color: '#3e4a57'}), 0.34, H.y + 0.45, 0); // yörünge motoru
-  // dönen kol: H etrafında; içinde bıçak mili ve bileme taşları
+  // kafa gövdesi (dişli kutusu): içi boş kutu; operatör tarafı kapağı kesitte kalkar, patlatmada açılır
+  tag = 'housing';
+  const HX = [0.12, 0.56];
+  const HY = [H.y - 0.15, H.y + 0.58];
+  const HZ = 0.17;
+  const HT = 0.012;
+  const hMat = () => M('head', {color: '#4d5c6c', metalness: 0.25});
+  const hx = (HX[0] + HX[1]) / 2;
+  const hw = HX[1] - HX[0];
+  const hy = (HY[0] + HY[1]) / 2;
+  const hh = HY[1] - HY[0];
+  add(box(hw, hh, HT), hMat(), hx, hy, -HZ);
+  const hFront = add(box(hw, hh, HT), hMat(), hx, hy, HZ);
+  hFront.userData.secFade = 1;
+  const hTop = add(box(hw, HT, 2 * HZ), hMat(), hx, HY[1], 0);
+  add(box(hw, HT, 2 * HZ), hMat(), hx, HY[0], 0);
+  for (const x of HX) add(box(HT, hh, 2 * HZ), hMat(), x, hy, 0);
+  // dişli: modül m = 2r/z, diş başı r + m, diş dibi r − 1,25 m; eksen x
+  const gearGeo = (r, z, w) => {
+    const m = (2 * r) / z;
+    const ra = r + m;
+    const rf = r - 1.25 * m;
+    const sh = new THREE.Shape();
+    for (let i = 0; i < z; i++) {
+      const t = TAU / z;
+      const a0 = i * t;
+      [[rf, a0], [rf, a0 + 0.12 * t], [ra, a0 + 0.32 * t], [ra, a0 + 0.52 * t], [rf, a0 + 0.72 * t]].forEach(([rr, a], j) => {
+        if (i === 0 && j === 0) sh.moveTo(rr * Math.cos(a), rr * Math.sin(a));
+        else sh.lineTo(rr * Math.cos(a), rr * Math.sin(a));
+      });
+    }
+    const hole = new THREE.Path();
+    hole.absarc(0, 0, Math.min(r * 0.45, 0.046), 0, TAU, true);
+    sh.holes.push(hole);
+    const g = new THREE.ExtrudeGeometry(sh, {depth: w, bevelEnabled: false, curveSegments: 4});
+    g.translate(0, 0, -w / 2);
+    g.rotateY(Math.PI / 2);
+    return g;
+  };
+  // düz kayış: iki kasnak etrafında açık kayış şeridi, (y, z) düzleminde; u = yol boyu / 0,02
+  const beltStripe = (() => {
+    const c = document.createElement('canvas');
+    c.width = 16;
+    c.height = 4;
+    const x = c.getContext('2d');
+    x.fillStyle = '#1f2327';
+    x.fillRect(0, 0, 16, 4);
+    x.fillStyle = '#e8590c';
+    x.fillRect(0, 0, 3, 4);
+    const t = new THREE.CanvasTexture(c);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    return t;
+  })();
+  const beltGeo = (A, rA, B, rB, w) => {
+    const dy = B[0] - A[0];
+    const dz = B[1] - A[1];
+    const Ld = Math.hypot(dy, dz);
+    const d = [dy / Ld, dz / Ld];
+    const pp = [-d[1], d[0]];
+    const c = (rA - rB) / Ld;
+    const sn = Math.sqrt(1 - c * c);
+    const n1 = [c * d[0] + sn * pp[0], c * d[1] + sn * pp[1]];
+    const n2 = [c * d[0] - sn * pp[0], c * d[1] - sn * pp[1]];
+    const ang = (v) => Math.atan2(v[1], v[0]);
+    const pts = [];
+    const arc = (C, r, a0, a1, thr) => {
+      let sw = (((a1 - a0) % TAU) + TAU) % TAU;
+      const mid = a0 + sw / 2;
+      if (Math.cos(mid) * thr[0] + Math.sin(mid) * thr[1] < 0) sw -= TAU;
+      for (let i = 0; i <= 40; i++) {
+        const a = a0 + (sw * i) / 40;
+        pts.push([C[0] + (r + 0.002) * Math.cos(a), C[1] + (r + 0.002) * Math.sin(a)]);
+      }
+    };
+    arc(A, rA, ang(n1), ang(n2), [-d[0], -d[1]]);
+    arc(B, rB, ang(n2), ang(n1), d);
+    pts.push(pts[0]);
+    const pos = [];
+    const uv = [];
+    const idx = [];
+    let L = 0;
+    pts.forEach((p, i) => {
+      if (i) L += Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]);
+      for (const sx of [-w / 2, w / 2]) {
+        pos.push(sx, p[0], p[1]);
+        uv.push(L / 0.02, sx > 0 ? 1 : 0);
+      }
+      if (i) idx.push(2 * i - 2, 2 * i - 1, 2 * i, 2 * i - 1, 2 * i + 1, 2 * i);
+    });
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    g.setIndex(idx);
+    g.computeVertexNormals();
+    return g;
+  };
+  const beltMatOf = () => {
+    const t = beltStripe.clone();
+    t.needsUpdate = true;
+    return {t, m: M('head', {map: t, roughness: 0.8, metalness: 0, side: THREE.DoubleSide})};
+  };
+  // yörünge mili: içi boş Ø 90, iki rulmanda; üstünde 64 dişli yörünge dişlisi
+  const orbitShaft = new THREE.Group();
+  orbitShaft.position.set(0, H.y, 0);
+  root.add(orbitShaft);
+  tag = 'orbitShaft';
+  const osMesh = add(xCyl(0.045, 0.45), steel('head'), 0.32, 0, 0, orbitShaft);
+  osMesh.userData.secFade = 0.75;
+  tag = 'bearing';
+  for (const x of [0.15, 0.52]) add(xCyl(0.07, 0.03), dark('head'), x, H.y, 0);
+  tag = 'orbitGear';
+  add(gearGeo(0.12, 64, 0.03), M('head', {color: '#b08d4a', metalness: 0.7, roughness: 0.35}), 0.3, 0, 0, orbitShaft);
+  // iç mil (bıçak mili): yörünge milinin içinden koaksiyel geçer, koldaki kasnağı döndürür
+  const inner = new THREE.Group();
+  inner.position.set(0, H.y, 0);
+  root.add(inner);
+  tag = 'innerShaft';
+  add(xCyl(0.02, 0.62), M('head', {color: '#d9b34a', metalness: 0.7, roughness: 0.3}), 0.37, 0, 0, inner);
+  // ara mil: 16 dişli pinyon + Ø 180 kasnak
+  const inter = new THREE.Group();
+  inter.position.set(0, H.y + 0.15, 0);
+  root.add(inter);
+  tag = 'pinion';
+  add(gearGeo(0.03, 16, 0.035), M('head', {color: '#c9a35c', metalness: 0.7, roughness: 0.35}), 0.3, 0, 0, inter);
+  tag = 'interShaft';
+  add(xCyl(0.015, 0.4), steel('head'), 0.34, 0, 0, inter);
+  tag = 'pulley';
+  add(xCyl(0.09, 0.03), M('head', {color: '#9aa3ab', metalness: 0.7, roughness: 0.3}), 0.48, 0, 0, inter);
+  add(box(0.032, 0.02, 0.16), dark('head'), 0.48, 0, 0, inter);
+  // yörünge motoru (dışarıda, akış tarafında) + Ø 60 kasnak; triger kayış 3:1
+  const motorG = new THREE.Group();
+  motorG.position.set(0, H.y + 0.45, 0);
+  root.add(motorG);
+  tag = 'orbitMotor';
+  add(xCyl(0.085, 0.28), M('head', {color: '#3e4a57', metalness: 0.3}), 0.71, 0, 0, motorG);
+  add(xCyl(0.07, 0.02), dark('head'), 0.86, 0, 0, motorG);
+  const motorRot = new THREE.Group();
+  motorG.add(motorRot);
+  add(xCyl(0.012, 0.15), steel('head'), 0.53, 0, 0, motorRot);
+  tag = 'pulley';
+  add(xCyl(0.03, 0.03), M('head', {color: '#9aa3ab', metalness: 0.7, roughness: 0.3}), 0.48, 0, 0, motorRot);
+  add(box(0.032, 0.012, 0.06), dark('head'), 0.48, 0, 0, motorRot);
+  tag = 'motorBelt';
+  const mb = beltMatOf();
+  const motorBelt = add(beltGeo([H.y + 0.15, 0], 0.09, [H.y + 0.45, 0], 0.03, 0.026), mb.m, 0.48, 0, 0);
+  // bıçak motoru: iç mille koaksiyel, gövdenin arkasında
+  const bmG = new THREE.Group();
+  bmG.position.set(0, H.y, 0);
+  root.add(bmG);
+  tag = 'bladeMotor';
+  add(xCyl(0.1, 0.3), M('head', {color: '#2f5d7c', metalness: 0.3}), 0.74, 0, 0, bmG);
+  const bmFan = new THREE.Group();
+  bmG.add(bmFan);
+  add(xCyl(0.08, 0.02), dark('head'), 0.9, 0, 0, bmFan);
+  add(box(0.024, 0.15, 0.02), M('head', {color: ACCENT}), 0.9, 0, 0, bmFan);
+
+  // dönen kol: H etrafında; içinde 2:1 kayış, bıçak mili ve bileme taşları
   const arm = new THREE.Group();
   arm.position.set(0, H.y, H.z);
   root.add(arm);
+  tag = 'arm';
   const armMat = M('head', {color: '#7b8794', metalness: 0.5, roughness: 0.35});
-  // kol çubuğu: H'den C'ye (yerel −y), karşı ağırlık yukarıda
-  add(box(0.03, ORBIT_E + 0.1, 0.1), armMat, 0.075, -ORBIT_E / 2 + 0.0, 0, arm);
-  add(box(0.045, 0.12, 0.18), M('head', {color: '#3a434d', metalness: 0.4}), 0.075, 0.13, 0, arm);
-  add(xCyl(0.06, 0.04), armMat, 0.075, 0, 0, arm);
-  // bıçak mili kovanı ve kayış koruyucu
-  add(xCyl(0.04, 0.07), steel('head'), 0.04, -ORBIT_E, 0, arm);
-  add(box(0.03, ORBIT_E, 0.07), M('head', {color: ACCENT, roughness: 0.5}), 0.105, -ORBIT_E / 2, 0, arm);
+  const armCase = add(box(0.04, ORBIT_E + 0.13, 0.15), armMat, 0.075, -ORBIT_E / 2 + 0.015, 0, arm);
+  armCase.userData.secFade = 0.85;
+  add(box(0.05, 0.12, 0.2), M('head', {color: '#3a434d', metalness: 0.4}), 0.075, 0.14, 0, arm);
+  tag = 'armPulley';
+  const armH = new THREE.Group();
+  arm.add(armH);
+  add(xCyl(0.06, 0.016), M('head', {color: '#9aa3ab', metalness: 0.7, roughness: 0.3}), 0.075, 0, 0, armH);
+  add(box(0.018, 0.016, 0.1), dark('head'), 0.075, 0, 0, armH);
+  tag = 'armBelt';
+  const ab = beltMatOf();
+  const armBelt = add(beltGeo([0, 0], 0.06, [-ORBIT_E, 0], 0.03, 0.014), ab.m, 0.075, 0, 0, arm);
+  tag = 'spindle';
+  const kovan = add(xCyl(0.04, 0.07), steel('head'), 0.04, -ORBIT_E, 0, arm);
+  kovan.userData.secFade = 0.8;
   // bıçak: kendi ekseninde döner
   const bladeTex = (() => {
     const c = document.createElement('canvas');
@@ -226,6 +394,12 @@ export function buildMachine() {
   const bladePiv = new THREE.Group();
   bladePiv.position.set(0, -ORBIT_E, 0);
   arm.add(bladePiv);
+  tag = 'spindle';
+  add(xCyl(0.015, 0.09), steel('head'), 0.04, 0, 0, bladePiv);
+  tag = 'armPulley';
+  add(xCyl(0.03, 0.016), M('head', {color: '#9aa3ab', metalness: 0.7, roughness: 0.3}), 0.075, 0, 0, bladePiv);
+  add(box(0.018, 0.012, 0.05), dark('head'), 0.075, 0, 0, bladePiv);
+  tag = 'blade';
   const bladeGeo = new THREE.CylinderGeometry(1, 1, BLADE_T, 128, 1);
   bladeGeo.rotateZ(Math.PI / 2);
   const bladeMat = M('head', {map: bladeTex, metalness: 0.45, roughness: 0.3});
@@ -233,6 +407,7 @@ export function buildMachine() {
   blade.castShadow = true;
   // bileme taşları: bıçağın H'ye bakan iç kenarında (±150°), loga hiç girmeyen nokta; iki yüz için iki taş
   const grinders = [];
+  tag = 'grinder';
   for (const [ang, side] of [
     [(150 * Math.PI) / 180, -1],
     [(-150 * Math.PI) / 180, 1],
@@ -252,10 +427,12 @@ export function buildMachine() {
   arm.add(sparks);
 
   // ---------------------------------------------------------- 4. fire kapağı ve hazne
+  tag = 'flap';
   const flap = new THREE.Group();
   flap.position.set(0.24, TABLE_Y - 0.004, 0);
   root.add(flap);
   add(box(0.21, 0.008, 0.26), M('trim', {color: '#8d969f', metalness: 0.6}), -0.105, 0, 0, flap);
+  tag = 'bin';
   add(box(0.36, 0.34, 0.5), M('trim', {color: '#d6a336', metalness: 0.2, roughness: 0.6}), 0.12, 0.17, 0);
   add(box(0.32, 0.02, 0.46), dark('trim'), 0.12, 0.33, 0);
   const binMat = M('trim', {color: '#f7f5ef', roughness: 0.95});
@@ -263,6 +440,7 @@ export function buildMachine() {
   void binPile;
 
   // ---------------------------------------------------------- 5. çıkış bandı
+  tag = 'outfeed';
   const outTex = beltTex.clone();
   outTex.needsUpdate = true;
   outTex.repeat.set((OUT_END - 0.25) / 0.08, 1);
@@ -272,10 +450,12 @@ export function buildMachine() {
   for (let x = 0.6; x < OUT_END; x += 0.9) for (const z of [-0.13, 0.13]) add(box(0.05, TABLE_Y - 0.03, 0.05), dark('outfeed'), x, (TABLE_Y - 0.03) / 2, z);
   for (const z of [-0.16, 0.16]) add(box(OUT_END - 0.3, 0.05, 0.01), steel('outfeed'), (0.3 + OUT_END) / 2, TABLE_Y + 0.025, z);
   // paketleme makinesine giriş
+  tag = 'packer';
   add(box(0.6, 1.3, 0.9), M('outfeed', {color: '#d7dce1', metalness: 0.2}), OUT_END + 0.42, 0.65, 0);
   add(box(0.02, 0.32, 0.32), M('outfeed', {color: '#1b2430'}), OUT_END + 0.11, TABLE_Y + 0.14, 0);
 
   // ---------------------------------------------------------- 6. güvenlik kabini (şeffaf polikarbon)
+  tag = null;
   const glass = new THREE.MeshStandardMaterial({color: '#c9dbe6', transparent: true, opacity: 0.16, roughness: 0.1, metalness: 0, depthWrite: false, side: THREE.DoubleSide});
   const cab = new THREE.Group();
   root.add(cab);
@@ -302,10 +482,29 @@ export function buildMachine() {
     mesh.receiveShadow = true;
     mesh.frustumCulled = false;
     mesh.visible = false;
+    mesh.userData.part = 'roll';
     root.add(mesh);
     return {mesh, mat};
   });
 
+  // tıklanabilir parçalar: her mesh kendi malzemesini alır, böylece tek tek soluklaştırılabilir
+  const pickables = [];
+  root.traverse((o) => {
+    if (!o.isMesh || !o.userData.part) return;
+    pickables.push(o);
+    if (o.userData.part === 'roll') return;
+    o.material = Array.isArray(o.material) ? o.material.map((m) => m.clone()) : o.material.clone();
+    for (const m of [].concat(o.material)) {
+      m.userData.op0 = m.opacity;
+      m.userData.tr0 = m.transparent;
+      m.userData.dw0 = m.depthWrite;
+    }
+  });
+  const partBox = (key) => {
+    const b = new THREE.Box3();
+    for (const o of pickables) if (o.userData.part === key && o.visible) b.expandByObject(o);
+    return b;
+  };
   const ease = (u) => {
     const k = Math.min(1, Math.max(0, u));
     return k * k * (3 - 2 * k);
@@ -324,9 +523,33 @@ export function buildMachine() {
     const pc = pieces(p, st.theta);
     const psi = pc.psi;
     // kafa
-    // ψ = 0'da kol aşağı; rotation.x = −ψ ile bıçak merkezi (H.y − e cos ψ, e sin ψ), kin.bladeCenter ile aynı
-    arm.rotation.x = -psi;
+    // ψ = 0'da kol aşağı; rotation.x = −ψ ile bıçak merkezi (H.y − e cos ψ, e sin ψ), kin.bladeCenter ile aynı.
+    // patlatmada kol yukarı (ψ = π) döner ki bıçak logdan uzak dursun
+    const ex = st.explode ?? 0;
+    const sec = st.section ?? 0;
+    const dpsi = ((((Math.PI - psi) % TAU) + TAU + Math.PI) % TAU) - Math.PI;
+    const th = st.theta + dpsi * ex; // gösterilen yörünge açısı
+    arm.rotation.x = -th;
+    orbitShaft.rotation.x = -th;
+    // iç mil: kol kasnağı 2:1 → iç milin kola göre açısı bıçağınkinin yarısı
+    inner.rotation.x = -th + st.bladeAngle / 2;
+    armH.rotation.x = st.bladeAngle / 2;
+    bmFan.rotation.x = st.bladeAngle / 2;
+    // yörünge dişlisi 64 / pinyon 16 = 4:1 ters yön; kasnak Ø180 / Ø60 = 3:1 aynı yön → motor 12 × kafa
+    inter.rotation.x = 4 * th;
+    motorRot.rotation.x = 12 * th;
+    mb.t.offset.x = -(12 * th * 0.03) / 0.02;
+    ab.t.offset.x = -((st.bladeAngle / 2) * 0.06) / 0.02;
     bladePiv.rotation.x = st.bladeAngle;
+    bladePiv.position.x = -0.3 * ex;
+    hFront.position.set(hx, hy + 0.8 * ex, HZ + 0.12 * ex);
+    hTop.position.y = HY[1] + 0.3 * ex;
+    inter.position.y = H.y + 0.15 + 0.2 * ex;
+    motorG.position.set(0.22 * ex, H.y + 0.45 + 0.3 * ex, 0);
+    bmG.position.x = 0.42 * ex;
+    motorBelt.visible = ex < 0.02;
+    armBelt.visible = ex < 0.02;
+    kovan.position.x = 0.04 - 0.12 * ex;
     blade.scale.set(1, st.bladeR, st.bladeR);
     void bladeCenter;
     // bileme: taşlar bıçak kenarına yaklaşır
@@ -334,7 +557,8 @@ export function buildMachine() {
     for (const g of grinders) {
       const r = st.bladeR + 0.035 + 0.006 * (1 - gr) - 0.001;
       // kol yerel düzleminde (y, z): bıçak merkezinden ang yönünde; ang = 0 kol yönü (aşağı)
-      g.g.position.set(g.side * (BLADE_T / 2 + 0.012), -ORBIT_E - r * Math.cos(g.ang), r * Math.sin(g.ang) * -1);
+      const re = r + 0.1 * ex;
+      g.g.position.set(g.side * (BLADE_T / 2 + 0.012) - 0.18 * ex + g.side * 0.05 * ex, -ORBIT_E - re * Math.cos(g.ang), re * Math.sin(g.ang) * -1);
       g.wheel.rotation.x = st.T * 40;
     }
     for (let i = 0; i < 60; i++) {
@@ -352,7 +576,7 @@ export function buildMachine() {
     sparks.geometry.attributes.position.needsUpdate = true;
     // papuçlar: besleme sırasında kalkar
     const open = ease((psi - (FEED[0] - 0.35)) / 0.3) * (1 - ease((psi - (FEED[1] + 0.02)) / 0.25));
-    for (const c of clamps) c.position.y = LOG_Y + 0.045 * open;
+    for (const c of clamps) c.position.y = LOG_Y + 0.045 * open + 0.25 * ex;
     // fire kapağı: fire kesildikten sonra açılır
     let flapOpen = 0;
     for (const q of pc.list) if (q.kind === 'trim') flapOpen = Math.max(flapOpen, ease(q.dt / 0.04) * (1 - ease((q.dt - 0.2) / 0.08)));
@@ -395,6 +619,25 @@ export function buildMachine() {
         m.emissive.copy(tmpC);
       }
     }
+    // kesit ve odak: saydamlık mesh başına (kesit kapağı, kol gövdesi, mil kovanı + odak dışı parçalar)
+    const fk = st.focusK ?? 0;
+    for (const o of pickables) {
+      if (o.userData.part === 'roll') continue;
+      const dim = st.focusKey && o.userData.part !== st.focusKey ? fk : 0;
+      const sf = o === hFront ? sec : Math.max(sec, ex);
+      const f = (1 - (o.userData.secFade ?? 0) * sf) * (1 - 0.86 * dim);
+      for (const m of [].concat(o.material)) {
+        const op = m.userData.op0 * f;
+        const tr = m.userData.tr0 || op < 0.999;
+        if (m.transparent !== tr) {
+          m.transparent = tr;
+          m.needsUpdate = true;
+        }
+        m.opacity = op;
+        m.depthWrite = tr ? op > 0.6 && m.userData.dw0 : m.userData.dw0;
+      }
+      o.visible = f > 0.03 && (o === motorBelt || o === armBelt ? ex < 0.02 : true);
+    }
     glass.opacity = 0.16 * (1 - (st.xray ?? 0));
     edge.opacity = 1;
     cab.visible = (st.xray ?? 0) < 0.98;
@@ -411,6 +654,10 @@ export function buildMachine() {
     bin: [0.12, 0.34, 0.25],
     out: [1.5, LOG_Y + LOG_R, 0],
     pack: [OUT_END + 0.3, 1.1, 0.45],
+    gear: [0.3, H.y + 0.12, HZ],
+    omotor: [0.71, H.y + 0.53, 0.06],
+    bmotor: [0.74, H.y - 0.1, 0.06],
+    inner: [0.62, H.y, 0.02],
   };
-  return {root, update, anchors};
+  return {root, update, anchors, pickables, partBox};
 }

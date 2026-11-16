@@ -16,6 +16,35 @@ export const ST_LABEL = {
 };
 const fmt = (n, d = 0) => (Number.isFinite(n) ? Number(n).toLocaleString('tr-TR', {minimumFractionDigits: d, maximumFractionDigits: d}) : '—');
 const mm = (m, d = 0) => `${fmt(m * 1000, d)} mm`;
+// parça kataloğu: modelde tıklanan parçanın adı, ne yaptığı ve canlı ölçüleri (hepsi kin.js'teki aynı sayılardan)
+export const PARTS = {
+  lane: {n: 'V-kanal', d: 'Logun yattığı iki eğik sac; log iki çizgiden oturur, yana kaçmaz.', r: () => [['AÇI', '2 × 40°'], ['BOY', '6,2 m'], ['LOG', 'Ø 200 mm']]},
+  feedBelt: {n: 'Tahrik bantları', d: 'Kanaldaki iki yarıktan logu taşır; bıçak dışarıdayken bir rulo boyu ileri iter.', r: (m) => [['ADIM', mm(m.step)], ['SÜRE', `${fmt(m.feedTime * 1000)} ms`], ['ORT. HIZ', `${fmt(m.feedSpeed, 2)} m/s`]]},
+  clamp: {n: 'Baskı papucu', d: 'Pnömatik silindirle iner, kesim sırasında logu kanala bastırır.', r: (m, s) => [['DURUM', s.clampOpen > 0.5 ? 'AÇIK' : 'KAPALI'], ['STROK', '45 mm'], ['PAPUÇ', 'Ø 224 iç yay']]},
+  portal: {n: 'Portal şase', d: 'İki kolon ve kiriş; kafa gövdesi kirişe asılıdır.', r: () => [['AÇIKLIK', '1240 mm'], ['YÜKSEKLİK', '2110 mm'], ['PROFİL', '140 × 140']]},
+  housing: {n: 'Kafa gövdesi', d: 'Dişli kutusu: yörünge mili, ara mil ve kayış içinde. KESİT ile operatör kapağı kalkar.', r: () => [['ÖLÇÜ', '440 × 730 × 340'], ['RULMAN', '2 × yörünge mili'], ['YAĞLAMA', 'yağ banyosu']]},
+  orbitShaft: {n: 'Yörünge mili', d: 'İçi boş mil; kolu ve yörünge dişlisini taşır, içinden bıçak mili geçer.', r: (m) => [['ÇAP', 'Ø 90 / iç Ø 50'], ['DEVİR', `${fmt(m.cpm)} dev/dk`], ['= KESİM/DK', fmt(m.cpm)]]},
+  bearing: {n: 'Yörünge mili rulmanları', d: 'Kolun dengesiz yükünü ve kesim kuvvetini gövdeye aktarır.', r: (m) => [['ADET', '2'], ['DIŞ ÇAP', 'Ø 140'], ['DEVİR', `${fmt(m.cpm)} dev/dk`]]},
+  orbitGear: {n: 'Yörünge dişlisi', d: 'Pinyondan gelen hareketi 4:1 düşürüp yörünge milini döndürür.', r: (m) => [['DİŞ', '64 · modül 3,75'], ['TAKSİMAT Ø', '240 mm'], ['DEVİR', `${fmt(m.cpm)} dev/dk`]]},
+  pinion: {n: 'Pinyon', d: 'Ara mildeki küçük dişli; yörünge dişlisini döndürür.', r: (m) => [['DİŞ', '16 · modül 3,75'], ['ORAN', '64 / 16 = 4:1'], ['DEVİR', `${fmt(m.cpm * 4)} dev/dk`]]},
+  interShaft: {n: 'Ara mil', d: 'Kayıştan gelen hareketi pinyona taşır.', r: (m) => [['ÇAP', 'Ø 30'], ['EKSEN', '+150 mm'], ['DEVİR', `${fmt(m.cpm * 4)} dev/dk`]]},
+  pulley: {n: 'Kayış kasnakları', d: 'Motor kasnağı Ø 60, ara mil kasnağı Ø 180: 3:1 düşürme.', r: (m) => [['ORAN', '180 / 60 = 3:1'], ['MOTOR', `${fmt(m.cpm * 12)} dev/dk`], ['ARA MİL', `${fmt(m.cpm * 4)} dev/dk`]]},
+  motorBelt: {n: 'Triger kayış', d: 'Yörünge motorunu ara mile bağlar, kaymadan.', r: (m) => [['GENİŞLİK', '26 mm'], ['HIZ', `${fmt((m.cpm * 12 * 2 * Math.PI * 0.03) / 60, 1)} m/s`], ['EKSEN ARASI', '300 mm']]},
+  orbitMotor: {n: 'Yörünge motoru', d: 'Sürücülü (VFD) servo motor; kesim hızı sürgüsü bunun devrini ayarlar. Toplam oran 12:1.', r: (m) => [['DEVİR', `${fmt(m.cpm * 12)} dev/dk`], ['ORAN', '3 × 4 = 12:1'], ['KAFA', `${fmt(m.cpm)} dev/dk`]]},
+  bladeMotor: {n: 'Bıçak motoru', d: 'İç mili döndürür; iç mil koldaki 2:1 kayışla bıçağı çevirir. Kol ters yönde döndüğü için motor devri bıçak/2 − kafa olur.', r: (m) => [['DEVİR', `${fmt(m.bladeRpm / 2 - m.cpm)} dev/dk`], ['= BIÇAK/2 − KAFA', `${fmt(m.bladeRpm / 2)} − ${fmt(m.cpm)}`], ['BIÇAK', `${fmt(m.bladeRpm)} dev/dk`]]},
+  innerShaft: {n: 'Bıçak mili (iç mil)', d: 'Yörünge milinin içinden koaksiyel geçer; bıçak hareketi kolun dönüşünden bağımsız kalır.', r: (m) => [['ÇAP', 'Ø 40'], ['BOY', '620 mm'], ['DEVİR', `${fmt(m.bladeRpm / 2 - m.cpm)} dev/dk`]]},
+  arm: {n: 'Yörünge kolu', d: 'Bıçağı 200 mm eksantrikle gezdirir; üstte karşı ağırlık titreşimi dengeler. KESİT ile içindeki kayış görünür.', r: () => [['EKSANTRİK', mm(ORBIT_E)], ['KARŞI AĞIRLIK', 'üstte'], ['İÇİNDE', '2:1 kayış']]},
+  armPulley: {n: 'Kol kasnakları', d: 'İç mil kasnağı Ø 120, bıçak mili kasnağı Ø 60: bıçak iç milin iki katı hızla döner.', r: (m) => [['ORAN', '120 / 60 = 2:1'], ['BIÇAK', `${fmt(m.bladeRpm)} dev/dk`], ['EKSEN ARASI', mm(ORBIT_E)]]},
+  armBelt: {n: 'Kol kayışı', d: 'Kolun içinde, iç milden bıçak miline hareketi taşır.', r: (m) => [['GENİŞLİK', '14 mm'], ['HIZ', `${fmt((m.bladeRpm * 2 * Math.PI * 0.03) / 60, 1)} m/s`], ['ORAN', '2:1']]},
+  spindle: {n: 'Bıçak mili', d: 'Kolun ucundaki rulmanlı kovanda döner, bıçağı flanşla tutar.', r: (m) => [['ÇAP', 'Ø 30'], ['DEVİR', `${fmt(m.bladeRpm)} dev/dk`], ['KOVAN', 'Ø 80']]},
+  blade: {n: 'Dairesel bıçak', d: 'Kenarı bilenmiş düz bıçak; dişsizdir, kağıdı ezmeden keser.', r: (m) => [['ÇAP', `${fmt(m.bladeR * 2000, 1)} mm`], ['KALINLIK', '4 mm'], ['ÇEVRE HIZI', `${fmt(m.bladeV, 1)} m/s`]]},
+  grinder: {n: 'Bileme taşları', d: `Her ${GRIND_EVERY} kesimde bıçağın iki yüzünü bileyler; loga hiç girmeyen iç kenarda durur.`, r: (m) => [['TAŞ', 'Ø 70 korundum'], ['SONRAKİ', `${m.nextGrind} kesim`], ['AŞINMA', `${fmt(GRIND_WEAR * 2000, 2)} mm/bileme`]]},
+  flap: {n: 'Fire kapağı', d: 'Baş ve kuyruk firesi kesilince açılır, fireler hazneye kayar.', r: (m) => [['AÇIKLIK', '210 mm'], ['FİRE/UÇ', mm(m.plan.trim, 1)], ['AÇILMA', '57°']]},
+  bin: {n: 'Fire haznesi', d: 'Fireler toplanır, geri dönüşüme (hamur) gider.', r: (m) => [['FİRE', `% ${fmt(m.plan.waste * 100, 1)}`], ['SAATLİK', `${fmt(m.logsMin * 60 * 2 * m.plan.trim * (m.roll.kg / m.plan.Lr), 0)} kg`], ['ÖLÇÜ', '360 × 500']]},
+  outfeed: {n: 'Çıkış bandı', d: 'Ayrılan ruloyu tur başına 1 m hızla taşır, rulolar arası açılır.', r: (m) => [['HIZ', `${fmt((m.cpm * 1.0) / 60, 2)} m/s`], ['RULO/DK', fmt(m.rollsMin, 1)], ['BOY', '2,5 m']]},
+  packer: {n: 'Paketleme girişi', d: 'Rulolar buradan paketleme makinesine geçer.', r: (m) => [['RULO/SAAT', fmt(m.rollsHour)], ['RULO', `${fmt(m.roll.kg, 2)} kg`], ['KAĞIT', `${fmt(m.roll.meters, 0)} m`]]},
+  roll: {n: 'Log / rulo', d: 'Kağıt havlu: 2 kat, kabartmalı, 250 mm delikli; karton masura Ø 40.', r: (m) => [['ÇAP', 'Ø 200 mm'], ['RULO BOYU', mm(m.plan.Lr)], ['YAPRAK', `${fmt(m.roll.sheets)} × 250 mm`]]},
+};
 const lifeH = (m) => (((m.bladeR - BLADE_RMIN) / GRIND_WEAR) * GRIND_EVERY) / Math.max(1, m.cpm) / 60;
 
 const CARD = {
@@ -61,7 +90,7 @@ const CARD = {
       ['ÇEVRE HIZI', `${fmt(m.bladeV, 1)} m/s`],
       ['KESİMDE KENAR YOLU', `${fmt(m.edgePerCut, 1)} m`],
     ],
-    a: ['blade', 'arm'],
+    a: ['blade', 'arm', 'gear', 'omotor'],
   },
   grind: {
     t: 'Bileme',
@@ -109,6 +138,10 @@ const LABEL = {
   bin: ['FİRE HAZNESİ', 'geri dönüşüm'],
   out: ['ÇIKIŞ BANDI', 'ara açar'],
   pack: ['PAKETLEME', 'giriş'],
+  gear: ['YÖRÜNGE DİŞLİSİ', '64 / 16 diş · 4:1'],
+  omotor: ['YÖRÜNGE MOTORU', 'kayış 3:1'],
+  bmotor: ['BIÇAK MOTORU', 'iç mil · koaksiyel'],
+  inner: ['BIÇAK MİLİ', 'yörünge milinin içinde'],
 };
 
 const CSS = `
@@ -184,6 +217,13 @@ export function createConsole(app) {
   const bladeSvg = add(`<svg style="position:absolute;left:38px;top:418px" width="80" height="80"></svg>`);
   const bl = kvRows(132, 420, 164, 3, 40);
 
+  // ------------------------------------------------------------ 05 parça (tıklanan)
+  panel(24, 572, 286, 196, 'PARÇA · TIKLA', '05');
+  const pTitle = add(`<div style="position:absolute;left:38px;top:600px;font-size:17px;font-weight:700;letter-spacing:-.2px;width:258px"></div>`);
+  const pDesc = add(`<div style="position:absolute;left:38px;top:624px;width:258px;font-size:11px;line-height:1.45;color:#46515c"></div>`);
+  const pRows = kvRows(38, 690, 258, 3, 26);
+  for (const r of pRows) r.v.style.fontSize = '13px';
+
   // ------------------------------------------------------------ 03 istasyon kartı
   panel(1290, 110, 286, 330, 'İSTASYON', '03');
   const cTitle = add(`<div style="position:absolute;left:1304px;top:140px;font-size:20px;font-weight:700;letter-spacing:-.3px;width:260px"></div>`);
@@ -200,15 +240,15 @@ export function createConsole(app) {
   const btn = {};
   let bx = 40;
   for (const s of STATIONS) {
-    const w = s === 'overview' ? 70 : 132;
+    const w = s === 'overview' ? 64 : 120;
     btn[s] = add(`<div class="bt st" style="left:${bx}px;top:806px;width:${w}px">${ST_LABEL[s]}</div>`);
     bx += w + 6;
   }
   const spots = {};
   for (const s of STATIONS) spots[s] = [parseFloat(btn[s].style.left) + parseFloat(btn[s].style.width) / 2, 820];
-  add(`<div class="sm" style="position:absolute;left:40px;top:846px">KONTROL · BOŞLUK DURDUR · G KABİN · E ETİKET · S AĞIR ÇEKİM</div>`);
+  add(`<div class="sm" style="position:absolute;left:40px;top:846px">BOŞLUK DURDUR · S YAVAŞ · G KABİN · K KESİT · X PATLAT · E ETİKET · PARÇAYA TIKLA, ESC ÇIK</div>`);
   const ctl = {};
-  [['play', '❚❚ DURDUR', 1000], ['slow', 'AĞIR ÇEKİM', 1084], ['xray', 'KABİN ŞEFFAF', 1180], ['labels', 'ETİKETLER', 1290]].forEach(([k, t, x]) => {
+  [['play', '❚❚ DURDUR', 868], ['slow', 'AĞIR ÇEKİM', 958], ['xray', 'KABİN', 1056], ['section', 'KESİT', 1120], ['explode', 'PATLAT', 1184], ['labels', 'ETİKET', 1256]].forEach(([k, t, x]) => {
     ctl[k] = add(`<div class="bt" style="left:${x}px;top:806px">${t}</div>`);
   });
   for (const k of Object.keys(ctl)) spots[k] = [parseFloat(ctl[k].style.left) + 40, 820];
@@ -298,6 +338,21 @@ export function createConsole(app) {
     ctl.slow.classList.toggle('on', s.slow);
     ctl.xray.classList.toggle('on', s.xray > 0.5);
     ctl.labels.classList.toggle('on', s.labelsOn);
+    ctl.section.classList.toggle('on', s.sectionOn);
+    ctl.explode.classList.toggle('on', s.explodeOn);
+    // parça paneli
+    const pi = s.part ? PARTS[s.part] : null;
+    const pt = pi ? pi.n : 'Bir parçaya tıklayın';
+    if (pTitle.textContent !== pt) {
+      pTitle.textContent = pt;
+      pDesc.textContent = pi ? pi.d : 'Kamera parçaya gider, diğerleri soluklaşır, ölçüleri burada görünür. Boşluğa tıklamak ya da ESC odaktan çıkar. KESİT dişli kutusunu ve kolu açar, PATLAT parçaları ayırır.';
+    }
+    const pr = pi ? pi.r(m, s) : [];
+    pRows.forEach((r, i) => {
+      r.k.textContent = pr[i]?.[0] ?? '';
+      r.v.textContent = pr[i]?.[1] ?? '';
+      r.k.parentElement.style.visibility = pr[i] ? 'visible' : 'hidden';
+    });
     spT.firstElementChild.style.width = `${s.speedK * SP.w}px`;
     spT.lastElementChild.style.left = `${s.speedK * SP.w}px`;
     spdV.textContent = fmt(m.cpm);
